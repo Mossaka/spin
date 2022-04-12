@@ -71,13 +71,19 @@ pub struct Builder<T: Default> {
 impl<T: Default> Builder<T> {
     /// Creates a new instance of the execution builder.
     pub fn new(config: ExecutionContextConfiguration) -> Result<Builder<T>> {
-        Self::with_wasmtime_config(config, Default::default())
+        Self::with_wasmtime_config(config, Default::default(), None)
+    }
+
+    /// Creates a new instanceo f the execution builder with a custom runtime.
+    pub fn from_engine(engine: Engine, config: ExecutionContextConfiguration) -> Result<Builder<T>> {
+        Self::with_wasmtime_config(config, Default::default(), Some(engine))
     }
 
     /// Creates a new instance of the execution builder with the given wasmtime::Config.
     pub fn with_wasmtime_config(
         config: ExecutionContextConfiguration,
         mut wasmtime: wasmtime::Config,
+        engine: Option<Engine>,
     ) -> Result<Builder<T>> {
         // In order for Wasmtime to run WebAssembly components, multi memory
         // and module linking must always be enabled.
@@ -86,7 +92,7 @@ impl<T: Default> Builder<T> {
         wasmtime.wasm_module_linking(true);
 
         let data = RuntimeContext::default();
-        let engine = Engine::new(&wasmtime)?;
+        let engine = engine.unwrap_or_else(|| Engine::new(&wasmtime).unwrap());
         let store = Store::new(&engine, data);
         let linker = Linker::new(&engine);
 
@@ -179,14 +185,18 @@ impl<T: Default> Builder<T> {
     /// Builds a new default instance of the execution context.
     pub async fn build_default(
         config: ExecutionContextConfiguration,
+        engine: Option<Engine>,
     ) -> Result<ExecutionContext<T>> {
         let _sloth_warning = warn_if_slothful();
-        Self::new(config)?
-            .link_wasi()?
-            .link_http()?
-            .link_config()?
-            .build()
-            .await
+        let mut builder = match engine {
+            Some(engine) => Self::from_engine(engine, config),
+            None => Self::new(config)
+        }?;
+        builder.link_wasi()?
+        .link_http()?
+        .link_config()?
+        .build()
+        .await
     }
 }
 

@@ -60,7 +60,7 @@ impl RedisTrigger {
             log_dir,
             ..app.into()
         };
-        let engine = Arc::new(Builder::build_default(config).await?);
+        let engine = Arc::new(Builder::build_default(config, None).await?);
         log::trace!("Created new Redis trigger.");
 
         Ok(Self {

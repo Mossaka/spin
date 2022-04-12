@@ -5,6 +5,7 @@ mod spin;
 mod tls;
 mod wagi;
 pub use tls::TlsConfig;
+use wasmtime::Engine;
 
 use crate::{
     routes::{RoutePattern, Router},
@@ -66,6 +67,7 @@ impl HttpTrigger {
         app: Application<CoreComponent>,
         tls: Option<TlsConfig>,
         log_dir: Option<PathBuf>,
+        engine: Option<Engine>,
     ) -> Result<Self> {
         let trigger_config = app
             .info
@@ -87,7 +89,7 @@ impl HttpTrigger {
             log_dir,
             ..app.into()
         };
-        let engine = Arc::new(Builder::build_default(config).await?);
+        let engine = Arc::new(Builder::build_default(config, engine).await?);
 
         log::trace!("Created new HTTP trigger.");
 
