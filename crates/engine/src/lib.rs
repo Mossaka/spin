@@ -56,6 +56,8 @@ pub struct RuntimeContext<T> {
     pub outbound_http: Option<wasi_outbound_http::OutboundHttp>,
     /// Component configuration.
     pub component_config: Option<spin_config::host_component::ComponentConfig>,
+    /// Outbound Redis configuration.
+    pub outbound_redis: Option<outbound_redis::OutboundRedis>,
     /// Generic runtime data that can be configured by specialized engines.
     pub data: Option<T>,
 }
@@ -132,6 +134,14 @@ impl<T: Default> Builder<T> {
         Ok(self)
     }
 
+    /// Configures the ability to execute outbound Redis commands.
+    pub fn link_redis(&mut self) -> Result<&mut Self> {
+        outbound_redis::add_to_linker(&mut self.linker, |ctx| {
+            ctx.outbound_redis.as_mut().unwrap()
+        })?;
+        Ok(self)
+    }
+
     /// Builds a new instance of the execution context.
     #[instrument(skip(self))]
     pub async fn build(&mut self) -> Result<ExecutionContext<T>> {
@@ -188,15 +198,13 @@ impl<T: Default> Builder<T> {
         engine: Option<Engine>,
     ) -> Result<ExecutionContext<T>> {
         let _sloth_warning = warn_if_slothful();
-        let mut builder = match engine {
-            Some(engine) => Self::from_engine(engine, config),
-            None => Self::new(config)
-        }?;
-        builder.link_wasi()?
-        .link_http()?
-        .link_config()?
-        .build()
-        .await
+        Self::with_wasmtime_config(config, Default::default(), engine)?
+            .link_wasi()?
+            .link_http()?
+            .link_config()?
+            .link_redis()?
+            .build()
+            .await
     }
 }
 
@@ -347,6 +355,7 @@ impl<T: Default> ExecutionContext<T> {
         ctx.wasi = Some(wasi_ctx.build());
         ctx.experimental_http = Some(experimental_http);
         ctx.outbound_http = Some(outbound_http);
+        ctx.outbound_redis = Some(outbound_redis::OutboundRedis);
         ctx.data = data;
 
         let store = Store::new(&self.engine, ctx);
