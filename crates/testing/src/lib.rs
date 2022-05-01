@@ -15,7 +15,7 @@ use spin_manifest::{
     CoreComponent, HttpConfig, ModuleSource, RedisConfig, RedisTriggerConfiguration, SpinVersion,
     TriggerConfig,
 };
-use spin_trigger::Trigger;
+use spin_trigger::{Function, Trigger};
 
 #[derive(Default)]
 pub struct TestConfig {

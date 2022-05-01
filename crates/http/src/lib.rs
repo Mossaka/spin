@@ -26,7 +26,7 @@ use spin_http::SpinHttpData;
 use spin_manifest::{
     Application, ComponentMap, CoreComponent, HttpConfig, HttpTriggerConfiguration,
 };
-use spin_trigger::Trigger;
+use spin_trigger::{Function, Trigger};
 use std::{future::ready, net::SocketAddr, sync::Arc};
 use tls_listener::TlsListener;
 use tokio::net::{TcpListener, TcpStream};
@@ -69,44 +69,16 @@ impl HttpRuntimeConfig {
 }
 
 #[async_trait]
-impl Trigger for HttpTrigger {
-    type ContextData = SpinHttpData;
-    type Config = HttpTriggerConfiguration;
-    type ComponentConfig = HttpConfig;
-    type RuntimeConfig = HttpRuntimeConfig;
-    type TriggerExtra = Router;
+impl Function for HttpTrigger {
+    /// the http request
+    type Params = Request<Body>;
+    /// the http response
+    type Return = Response<Body>;
+    /// the client address
+    type Context = SocketAddr;
 
-    fn new(
-        execution_context: ExecutionContext,
-        config: Self::Config,
-        component_configs: ComponentMap<Self::ComponentConfig>,
-        trigger_extra: Self::TriggerExtra,
-    ) -> Result<Self> {
-        Ok(Self {
-            trigger_config: config,
-            component_triggers: component_configs,
-            router: trigger_extra,
-            engine: Arc::new(execution_context),
-        })
-    }
-
-    fn build_trigger_extra(app: Application<CoreComponent>) -> Result<Self::TriggerExtra> {
-        Router::build(&app)
-    }
-
-    /// Runs the HTTP trigger indefinitely.
-    async fn run(&self, run_config: Self::RuntimeConfig) -> Result<()> {
-        match run_config.tls.as_ref() {
-            Some(tls) => self.serve_tls(tls, run_config.address).await?,
-            None => self.serve(run_config.address).await?,
-        }
-        Ok(())
-    }
-}
-
-impl HttpTrigger {
     /// Handles incoming requests using an HTTP executor.
-    pub async fn handle(&self, req: Request<Body>, addr: SocketAddr) -> Result<Response<Body>> {
+    async fn handle(&self, req: Self::Params, addr: Self::Context) -> Result<Self::Return> {
         log::info!(
             "Processing request for application {} on URI {}",
             &self.engine.config.label,
@@ -166,7 +138,45 @@ impl HttpTrigger {
             },
         }
     }
+}
 
+#[async_trait]
+impl Trigger for HttpTrigger {
+    type ContextData = SpinHttpData;
+    type Config = HttpTriggerConfiguration;
+    type ComponentConfig = HttpConfig;
+    type RuntimeConfig = HttpRuntimeConfig;
+    type TriggerExtra = Router;
+
+    fn new(
+        execution_context: ExecutionContext,
+        config: Self::Config,
+        component_configs: ComponentMap<Self::ComponentConfig>,
+        trigger_extra: Self::TriggerExtra,
+    ) -> Result<Self> {
+        Ok(Self {
+            trigger_config: config,
+            component_triggers: component_configs,
+            router: trigger_extra,
+            engine: Arc::new(execution_context),
+        })
+    }
+
+    fn build_trigger_extra(app: Application<CoreComponent>) -> Result<Self::TriggerExtra> {
+        Router::build(&app)
+    }
+
+    /// Runs the HTTP trigger indefinitely.
+    async fn run(&self, run_config: Self::RuntimeConfig) -> Result<()> {
+        match run_config.tls.as_ref() {
+            Some(tls) => self.serve_tls(tls, run_config.address).await?,
+            None => self.serve(run_config.address).await?,
+        }
+        Ok(())
+    }
+}
+
+impl HttpTrigger {
     /// Creates an HTTP 500 response.
     fn internal_error(body: Option<&str>) -> Result<Response<Body>> {
         let body = match body {

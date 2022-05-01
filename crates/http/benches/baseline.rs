@@ -7,6 +7,7 @@ use http::Request;
 use spin_http_engine::HttpTrigger;
 use spin_manifest::{HttpConfig, HttpExecutor};
 use spin_testing::{assert_http_response_success, TestConfig};
+use spin_trigger::Function;
 use tokio::runtime::Runtime;
 use tokio::task;
 

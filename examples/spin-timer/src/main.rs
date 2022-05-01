@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use spin_engine::{Builder, ExecutionContextConfiguration};
 use spin_manifest::{Application, ComponentMap, CoreComponent, ModuleSource, WasmConfig};
 use spin_timer::SpinTimerData;
-use spin_trigger::Trigger;
+use spin_trigger::{Function, Trigger};
 use std::{sync::Arc, time::Duration};
 use tokio::task::spawn_blocking;
 
@@ -50,6 +50,35 @@ pub struct TimerRuntimeConfig {
 }
 
 #[async_trait]
+impl Function for TimerTrigger {
+    type Params = String;
+    type Return = ();
+    type Context = ();
+
+    /// Execute the first component in the application configuration.
+    async fn handle(&self, msg: Self::Params, _: Self::Context) -> Result<Self::Return> {
+        let (mut store, instance) = self.engine.prepare_component(
+            &self.engine.config.components[0].id,
+            None,
+            None,
+            None,
+            None,
+        )?;
+
+        let res = spawn_blocking(move || -> Result<String> {
+            let t = spin_timer::SpinTimer::new(&mut store, &instance, |host| {
+                host.data.as_mut().unwrap()
+            })?;
+            Ok(t.handle_timer_request(&mut store, &msg)?)
+        })
+        .await??;
+        log::info!("{}\n", res);
+
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl Trigger for TimerTrigger {
     type ContextData = SpinTimerData;
     type Config = ();
@@ -81,33 +110,10 @@ impl Trigger for TimerTrigger {
                 chrono::Local::now()
                     .format("%Y-%m-%d][%H:%M:%S")
                     .to_string(),
+                (),
             )
             .await?;
         }
-    }
-}
-
-impl TimerTrigger {
-    /// Execute the first component in the application configuration.
-    async fn handle(&self, msg: String) -> Result<()> {
-        let (mut store, instance) = self.engine.prepare_component(
-            &self.engine.config.components[0].id,
-            None,
-            None,
-            None,
-            None,
-        )?;
-
-        let res = spawn_blocking(move || -> Result<String> {
-            let t = spin_timer::SpinTimer::new(&mut store, &instance, |host| {
-                host.data.as_mut().unwrap()
-            })?;
-            Ok(t.handle_timer_request(&mut store, &msg)?)
-        })
-        .await??;
-        log::info!("{}\n", res);
-
-        Ok(())
     }
 }
 
