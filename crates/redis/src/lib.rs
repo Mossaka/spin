@@ -3,7 +3,7 @@
 mod spin;
 
 use crate::spin::SpinRedisExecutor;
-use anyhow::{Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use redis::{Client, ConnectionLike};
@@ -12,7 +12,7 @@ use spin_manifest::{
     Application, ComponentMap, CoreComponent, RedisConfig, RedisTriggerConfiguration,
 };
 use spin_redis::SpinRedisData;
-use spin_trigger::Trigger;
+use spin_trigger::{Function, Trigger};
 use std::{collections::HashMap, sync::Arc};
 
 wit_bindgen_wasmtime::import!("../../wit/ephemeral/spin-redis.wit");
@@ -31,6 +31,46 @@ pub struct RedisTrigger {
     engine: Arc<ExecutionContext>,
     /// Map from channel name to tuple of component name & index.
     subscriptions: HashMap<String, usize>,
+}
+
+#[async_trait]
+impl Function for RedisTrigger {
+    type Params = redis::Msg;
+    type Return = ();
+    type Context = ();
+
+    async fn handle(&self, msg: Self::Params, _: Self::Context) -> Result<Self::Return> {
+        let channel = msg.get_channel_name();
+        log::info!("Received message on channel {:?}", channel);
+
+        if let Some(idx) = self.subscriptions.get(channel).copied() {
+            let component = &self.engine.config.components[idx];
+            let executor = self
+                .component_triggers
+                .get(component)
+                .and_then(|t| t.executor.clone())
+                .unwrap_or_default();
+
+            match executor {
+                spin_manifest::RedisExecutor::Spin => {
+                    log::trace!("Executing Spin Redis component {}", component.id);
+                    let executor = SpinRedisExecutor;
+                    executor
+                        .execute(
+                            &self.engine,
+                            &component.id,
+                            channel,
+                            msg.get_payload_bytes(),
+                        )
+                        .await?
+                }
+            };
+        } else {
+            log::debug!("No subscription found for {:?}", channel);
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -91,7 +131,7 @@ impl Trigger for RedisTrigger {
         let mut stream = pubsub.on_message();
         loop {
             match stream.next().await {
-                Some(msg) => drop(self.handle(msg).await),
+                Some(msg) => drop(self.handle(msg, ()).await),
                 None => {
                     log::trace!("Empty message");
                     if !client.check_connection() {
@@ -101,42 +141,6 @@ impl Trigger for RedisTrigger {
                 }
             };
         }
-    }
-}
-
-impl RedisTrigger {
-    // Handle the message.
-    async fn handle(&self, msg: redis::Msg) -> Result<()> {
-        let channel = msg.get_channel_name();
-        log::info!("Received message on channel {:?}", channel);
-
-        if let Some(idx) = self.subscriptions.get(channel).copied() {
-            let component = &self.engine.config.components[idx];
-            let executor = self
-                .component_triggers
-                .get(component)
-                .and_then(|t| t.executor.clone())
-                .unwrap_or_default();
-
-            match executor {
-                spin_manifest::RedisExecutor::Spin => {
-                    log::trace!("Executing Spin Redis component {}", component.id);
-                    let executor = SpinRedisExecutor;
-                    executor
-                        .execute(
-                            &self.engine,
-                            &component.id,
-                            channel,
-                            msg.get_payload_bytes(),
-                        )
-                        .await?
-                }
-            };
-        } else {
-            log::debug!("No subscription found for {:?}", channel);
-        }
-
-        Ok(())
     }
 }
 

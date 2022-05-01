@@ -5,9 +5,22 @@ use async_trait::async_trait;
 use spin_engine::{Builder, ExecutionContext, ExecutionContextConfiguration};
 use spin_manifest::{Application, ApplicationTrigger, ComponentMap, CoreComponent, TriggerConfig};
 
+#[async_trait]
+pub trait Function: Sized {
+    /// params type
+    type Params;
+    /// return type
+    type Return;
+    /// context
+    type Context;
+
+    /// execute function
+    async fn handle(&self, params: Self::Params, contxt: Self::Context) -> Result<Self::Return>;
+}
+
 /// The trigger
 #[async_trait]
-pub trait Trigger: Sized {
+pub trait Trigger: Sized + Function {
     /// data
     type ContextData: Default + 'static;
     /// trigger configuration
