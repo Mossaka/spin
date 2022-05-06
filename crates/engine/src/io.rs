@@ -38,6 +38,7 @@ pub trait OutputBuffers {
     fn stderr(&self) -> &[u8];
 }
 
+
 /// A set of redirected standard I/O streams with which
 /// a Wasm module is to be run.
 pub struct ModuleIoRedirects {

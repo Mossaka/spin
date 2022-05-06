@@ -80,7 +80,7 @@ where
     }?;
 
     T::configure_execution_context(&mut builder)?;
-    let execution_ctx = builder.build().await?;
+    let execution_ctx = builder.build(None).await?;
     let trigger_config = app.info.trigger.try_into()?;
 
     let component_triggers = app

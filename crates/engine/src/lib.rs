@@ -134,11 +134,23 @@ impl<T: Default + 'static> Builder<T> {
     }
 
     /// Builds a new instance of the execution context.
-    #[instrument(skip(self))]
-    pub async fn build(mut self) -> Result<ExecutionContext<T>> {
-        let data = RuntimeContext::default();
+    pub async fn build(self, io: Option<ModuleIoRedirects>) -> Result<ExecutionContext<T>> {
+        let mut data = RuntimeContext::default();
+
+        let mut wasi_ctx = WasiCtxBuilder::new();
+        
+        match io {
+            Some(r) => {
+                wasi_ctx = wasi_ctx.stderr(r.stderr).stdout(r.stdout).stdin(r.stdin);
+            }
+            None => wasi_ctx = wasi_ctx.inherit_stdio(),
+        };
+
+        data.wasi = Some(wasi_ctx.build());
+        
         let mut store = Store::new(&self.engine, data);
         let _sloth_warning = warn_if_slothful();
+
         let mut components = HashMap::new();
         for c in &self.config.components {
             let core = c.clone();
@@ -195,7 +207,7 @@ impl<T: Default + 'static> Builder<T> {
     ) -> Result<ExecutionContext<T>> {
         let mut builder = Self::new(config)?;
         builder.link_defaults()?;
-        builder.build().await
+        builder.build(None).await
     }
 }
 
