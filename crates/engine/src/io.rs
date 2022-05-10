@@ -48,6 +48,18 @@ pub struct IoPaths {
     pub(crate) stderr: PathBuf,
 }
 
+impl IoPaths {
+       /// Constructs an instance from a set of PathBufs objects.
+       pub fn new(
+        stdout: PathBuf,
+        stderr: PathBuf,
+    ) -> Self {
+        Self {
+            stdout,
+            stderr,
+        }
+    } 
+}
 
 /// A set of redirected standard I/O streams with which
 /// a Wasm module is to be run.
