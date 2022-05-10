@@ -1,12 +1,14 @@
 use std::{
     collections::HashSet,
     io::{LineWriter, Write},
-    sync::{Arc, RwLock, RwLockReadGuard},
+    sync::{Arc, RwLock, RwLockReadGuard}, path::PathBuf, fs::OpenOptions,
 };
 use wasi_common::{
     pipe::{ReadPipe, WritePipe},
     WasiFile,
 };
+use wasmtime_wasi::sync::file::File as WF;
+use cap_std::fs::File as CapFile;
 
 /// Which components should have their logs followed on stdout/stderr.
 #[derive(Clone, Debug)]
@@ -36,6 +38,14 @@ pub trait OutputBuffers {
     fn stdout(&self) -> &[u8];
     /// The buffer in which stderr has been saved.
     fn stderr(&self) -> &[u8];
+}
+
+/// IoPaths that can be passed to `ExecutionContextConfiguration`
+/// to direct out and err
+#[derive(Clone, Debug)]
+pub struct IoPaths {
+    pub(crate) stdout: PathBuf,
+    pub(crate) stderr: PathBuf,
 }
 
 
@@ -98,20 +108,31 @@ impl<'a> OutputBuffers for RedirectReadHandlesLock<'a> {
 pub fn capture_io_to_memory(
     follow_on_stdout: bool,
     follow_on_stderr: bool,
+    io_paths: Option<IoPaths>
 ) -> (ModuleIoRedirects, RedirectReadHandles) {
     let stdout_follow = Follow::stdout(follow_on_stdout);
     let stderr_follow = Follow::stderr(follow_on_stderr);
 
     let stdin = ReadPipe::from(vec![]);
 
-    let (stdout_pipe, stdout_lock) = redirect_to_mem_buffer(stdout_follow);
+    let (stdout_pipe, stdout_lock) = redirect_to_mem_buffer(
+        stdout_follow, if io_paths.is_some() {
+            Some(io_paths.clone().unwrap().stdout)
+        } else {
+            None
+        });
 
-    let (stderr_pipe, stderr_lock) = redirect_to_mem_buffer(stderr_follow);
+    let (stderr_pipe, stderr_lock) = redirect_to_mem_buffer(
+        stderr_follow, if io_paths.is_some() {
+            Some(io_paths.clone().unwrap().stderr)
+        } else {
+            None
+        });
 
     let redirects = ModuleIoRedirects {
         stdin: Box::new(stdin),
-        stdout: Box::new(stdout_pipe),
-        stderr: Box::new(stderr_pipe),
+        stdout: stdout_pipe,
+        stderr: stderr_pipe,
     };
 
     let outputs = RedirectReadHandles {
@@ -165,13 +186,23 @@ impl Follow {
 /// copying to the specified output stream.
 pub fn redirect_to_mem_buffer(
     follow: Follow,
-) -> (WritePipe<WriteDestinations>, Arc<RwLock<WriteDestinations>>) {
+    stdio: Option<PathBuf>
+) -> (Box<dyn WasiFile>, Arc<RwLock<WriteDestinations>>) {
     let immediate = follow.writer();
 
     let buffer: Vec<u8> = vec![];
     let std_dests = WriteDestinations { buffer, immediate };
     let lock = Arc::new(RwLock::new(std_dests));
-    let std_pipe = WritePipe::from_shared(lock.clone());
+    let std_pipe: Box<dyn WasiFile> = match stdio {
+     Some(io) => {
+        let f = OpenOptions::new().read(true).write(true).open(io).unwrap();
+        let wf = WF::from_cap_std(CapFile::from_std(f));
+        Box::new(wf)
+     },
+     None => {
+        Box::new(WritePipe::from_shared(lock.clone()))
+     }
+    };
 
     (std_pipe, lock)
 }

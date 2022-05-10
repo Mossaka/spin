@@ -23,7 +23,7 @@ impl RedisExecutor for SpinRedisExecutor {
             component
         );
 
-        let (redirects, outputs) = capture_io_to_memory(follow, follow);
+        let (redirects, outputs) = capture_io_to_memory(follow, follow, None);
 
         let (store, instance) =
             engine.prepare_component(component, None, Some(redirects), None, None)?;
@@ -39,7 +39,7 @@ impl RedisExecutor for SpinRedisExecutor {
             }
         };
 
-        let log_result = engine.save_output_to_logs(outputs.read(), component, true, true);
+        let log_result = engine.save_output_to_logs(outputs.read(), component, true, true, None);
 
         result.and(log_result)
     }

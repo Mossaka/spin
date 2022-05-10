@@ -107,7 +107,7 @@ impl HttpExecutor for WagiHttpExecutor {
         let guest_result = spawn_blocking(move || start.call(&mut store, &[], &mut [])).await;
         tracing::info!("Module execution complete");
 
-        let log_result = engine.save_output_to_logs(outputs.read(), component, false, true);
+        let log_result = engine.save_output_to_logs(outputs.read(), component, false, true, None);
 
         // Defer checking for failures until here so that the logging runs
         // even if the guest code fails. (And when checking, check the guest
@@ -131,12 +131,12 @@ impl WagiHttpExecutor {
         let stdout_lock = Arc::new(RwLock::new(stdout_buf));
         let stdout_pipe = WritePipe::from_shared(stdout_lock.clone());
 
-        let (stderr_pipe, stderr_lock) = redirect_to_mem_buffer(Follow::stderr(follow_on_stderr));
+        let (stderr_pipe, stderr_lock) = redirect_to_mem_buffer(Follow::stderr(follow_on_stderr), None);
 
         let rd = ModuleIoRedirects::new(
             Box::new(stdin),
             Box::new(stdout_pipe),
-            Box::new(stderr_pipe),
+            stderr_pipe,
         );
 
         let h = WagiRedirectReadHandles {

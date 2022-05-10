@@ -9,7 +9,7 @@ pub mod io;
 
 use anyhow::{bail, Context, Result};
 use host_component::{HostComponent, HostComponents, HostComponentsState};
-use io::{ModuleIoRedirects, OutputBuffers};
+use io::{IoPaths, ModuleIoRedirects, OutputBuffers};
 use spin_config::{host_component::ComponentConfig, Resolver};
 use spin_manifest::{Application, CoreComponent, DirectoryMount, ModuleSource};
 use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
@@ -35,6 +35,8 @@ pub struct ExecutionContextConfiguration {
     pub log_dir: Option<PathBuf>,
     /// Application configuration resolver.
     pub config_resolver: Option<Arc<Resolver>>,
+    /// stdout on host.
+    pub io_paths: Option<IoPaths>,
 }
 
 impl From<Application> for ExecutionContextConfiguration {
@@ -138,7 +140,7 @@ impl<T: Default + 'static> Builder<T> {
         let mut data = RuntimeContext::default();
 
         let mut wasi_ctx = WasiCtxBuilder::new();
-        
+
         match io {
             Some(r) => {
                 wasi_ctx = wasi_ctx.stderr(r.stderr).stdout(r.stdout).stdin(r.stdin);
@@ -147,7 +149,7 @@ impl<T: Default + 'static> Builder<T> {
         };
 
         data.wasi = Some(wasi_ctx.build());
-        
+
         let mut store = Store::new(&self.engine, data);
         let _sloth_warning = warn_if_slothful();
 
@@ -272,6 +274,7 @@ impl<T: Default> ExecutionContext<T> {
         component: &str,
         save_stdout: bool,
         save_stderr: bool,
+        io_paths: Option<IoPaths>,
     ) -> Result<()> {
         let sanitized_label = sanitize(&self.config.label);
         let sanitized_component_name = sanitize(&component);
@@ -284,15 +287,21 @@ impl<T: Default> ExecutionContext<T> {
             },
         };
 
-        let stdout_filename = log_dir.join(sanitize(format!(
-            "{}_{}.txt",
-            sanitized_component_name, "stdout",
-        )));
+        let stdout_filename = match io_paths.clone() {
+            Some(io) => io.stdout,
+            None => log_dir.join(sanitize(format!(
+                "{}_{}.txt",
+                sanitized_component_name, "stdout",
+            ))),
+        };
 
-        let stderr_filename = log_dir.join(sanitize(format!(
-            "{}_{}.txt",
-            sanitized_component_name, "stderr"
-        )));
+        let stderr_filename = match io_paths.clone() {
+            Some(io) => io.stderr,
+            None => log_dir.join(sanitize(format!(
+                "{}_{}.txt",
+                sanitized_component_name, "stderr"
+            ))),
+        };
 
         std::fs::create_dir_all(&log_dir)?;
 
