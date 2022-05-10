@@ -308,21 +308,33 @@ impl<T: Default> ExecutionContext<T> {
         log::trace!("Saving logs to {:?} {:?}", stdout_filename, stderr_filename);
 
         if save_stdout {
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = match io_paths.clone() {
+                Some(_) => std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(stdout_filename)?,
+                None => std::fs::OpenOptions::new()
                 .write(true)
                 .append(true)
                 .create(true)
-                .open(stdout_filename)?;
+                .open(stdout_filename)?
+            };
             let contents = io_redirects.stdout();
             file.write_all(contents)?;
         }
 
         if save_stderr {
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = match io_paths.clone() {
+                Some(_) => std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(stderr_filename)?,
+                None => std::fs::OpenOptions::new()
                 .write(true)
                 .append(true)
                 .create(true)
-                .open(stderr_filename)?;
+                .open(stderr_filename)?
+            };
             let contents = io_redirects.stderr();
             file.write_all(contents)?;
         }
