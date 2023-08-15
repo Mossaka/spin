@@ -20,6 +20,7 @@ use spin_redis_engine::RedisTrigger;
 use spin_trigger::cli::help::HelpArgsOnlyTrigger;
 use spin_trigger::cli::TriggerExecutorCommand;
 use spin_trigger_http::HttpTrigger;
+use spin_trigger_wasi_messaging::WasiMessagingTrigger;
 
 #[tokio::main]
 async fn main() {
@@ -139,6 +140,7 @@ enum SpinApp {
 enum TriggerCommands {
     Http(TriggerExecutorCommand<HttpTrigger>),
     Redis(TriggerExecutorCommand<RedisTrigger>),
+    WasiMessaging(TriggerExecutorCommand<WasiMessagingTrigger>),
     #[clap(name = spin_cli::HELP_ARGS_ONLY_TRIGGER_TYPE, hide = true)]
     HelpArgsOnly(TriggerExecutorCommand<HelpArgsOnlyTrigger>),
 }
@@ -157,6 +159,7 @@ impl SpinApp {
             Self::Build(cmd) => cmd.run().await,
             Self::Trigger(TriggerCommands::Http(cmd)) => cmd.run().await,
             Self::Trigger(TriggerCommands::Redis(cmd)) => cmd.run().await,
+            Self::Trigger(TriggerCommands::WasiMessaging(cmd)) => cmd.run().await,
             Self::Trigger(TriggerCommands::HelpArgsOnly(cmd)) => cmd.run().await,
             Self::Plugins(cmd) => cmd.run().await,
             Self::External(cmd) => execute_external_subcommand(cmd, app).await,

@@ -1,6 +1,6 @@
 use crate::{
     poll::{PollWaker, Pollable},
-    wit::wasi::io::streams2::{self as streams, StreamStatus},
+    wasi_http::wasi::io::streams2::{self as streams, StreamStatus},
     WasiCloud,
 };
 use anyhow::{anyhow, Result};

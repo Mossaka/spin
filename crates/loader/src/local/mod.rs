@@ -23,7 +23,8 @@ use path_absolutize::Absolutize;
 use reqwest::Url;
 use spin_manifest::{
     Application, ApplicationInformation, ApplicationOrigin, ApplicationTrigger, CoreComponent,
-    HttpConfig, ModuleSource, RedisConfig, SpinVersion, TriggerConfig, WasmConfig,
+    HttpConfig, ModuleSource, RedisConfig, SpinVersion, TriggerConfig, WasiMessagingConfig,
+    WasmConfig,
 };
 use tokio::{fs::File, io::AsyncReadExt};
 
@@ -440,6 +441,9 @@ fn resolve_trigger(
     let tc = match app_trigger {
         ApplicationTrigger::Http(_) => TriggerConfig::Http(HttpConfig::deserialize(partial)?),
         ApplicationTrigger::Redis(_) => TriggerConfig::Redis(RedisConfig::deserialize(partial)?),
+        ApplicationTrigger::WasiMessaging(_) => {
+            TriggerConfig::WasiMessaging(WasiMessagingConfig::deserialize(partial)?)
+        }
         ApplicationTrigger::External(_) => TriggerConfig::External(HashMap::deserialize(partial)?),
     };
     Ok(tc)

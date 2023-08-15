@@ -4922,6 +4922,7 @@ dependencies = [
  "spin-templates",
  "spin-trigger",
  "spin-trigger-http",
+ "spin-trigger-wasi-messaging",
  "subprocess",
  "tempfile",
  "terminal",
@@ -5397,6 +5398,21 @@ dependencies = [
  "wasi-common",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "spin-trigger-wasi-messaging"
+version = "1.5.0-pre0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "redis",
+ "serde",
+ "spin-app",
+ "spin-core",
+ "spin-trigger",
+ "tracing",
+ "wasi-cloud",
 ]
 
 [[package]]
@@ -6258,6 +6274,7 @@ dependencies = [
  "futures",
  "http",
  "hyper",
+ "redis",
  "reqwest",
  "spin-common",
  "spin-core",

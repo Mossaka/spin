@@ -1,19 +1,30 @@
 use anyhow::{anyhow, Result};
+use redis::aio::Connection;
 use reqwest::Client;
 use spin_common::table::Table;
 use spin_core::HostComponent;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Notify;
-use wit::wasi::http::types2 as types;
+use wasi_http::wasi::http::types2 as types;
+use wasi_messaging::wasi::messaging::messaging_types;
 
 pub mod http;
+mod messaging;
 mod poll;
 mod streams;
 
-pub mod wit {
+pub mod wasi_http {
     wasmtime::component::bindgen!({
         path: "../../wit/wasi-http",
         world: "proxy",
+        async: true
+    });
+}
+
+pub mod wasi_messaging {
+    wasmtime::component::bindgen!({
+        path: "../../wit/wasi-messaging/wit",
+        world: "messaging",
         async: true
     });
 }
@@ -27,12 +38,19 @@ impl HostComponent for WasiCloudComponent {
         linker: &mut spin_core::Linker<T>,
         get: impl Fn(&mut spin_core::Data<T>) -> &mut Self::Data + Send + Sync + Copy + 'static,
     ) -> anyhow::Result<()> {
-        wit::Proxy::add_to_linker(linker, get)
+        wasi_http::Proxy::add_to_linker(linker, get)
     }
 
     fn build_data(&self) -> Self::Data {
         Default::default()
     }
+}
+
+#[derive(Default)]
+struct WasiMessaging {
+    connections: HashMap<String, Connection>,
+    clients: Table<messaging::Client>,
+    errors: Table<messaging::Error>,
 }
 
 #[derive(Default)]
@@ -51,6 +69,7 @@ pub struct WasiCloud {
     output_streams: Table<streams::OutputStream>,
     notify: Arc<Notify>,
     http_client: Client,
+    messaging: WasiMessaging,
 }
 
 impl WasiCloud {
@@ -70,5 +89,12 @@ impl WasiCloud {
         self.response_outparams
             .push(outparam)
             .map_err(|()| anyhow!("table overflow"))
+    }
+
+    pub fn take_messaging_error(&mut self, error: messaging_types::Error) -> anyhow::Error {
+        self.messaging
+            .errors
+            .remove(error)
+            .unwrap_or_else(|| anyhow!("unknown handle: {error}"))
     }
 }

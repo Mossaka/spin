@@ -127,6 +127,8 @@ pub enum ApplicationTrigger {
     Http(HttpTriggerConfiguration),
     /// Redis trigger type.
     Redis(RedisTriggerConfiguration),
+    /// `wasi-messaging` trigger type
+    WasiMessaging(WasiMessagingTriggerConfiguration),
     /// A trigger type that is not built in.
     External(ExternalTriggerConfiguration),
 }
@@ -159,6 +161,8 @@ enum InternalApplicationTriggerSerialised {
     Http(HttpTriggerConfiguration),
     /// Redis trigger type.
     Redis(RedisTriggerConfiguration),
+    /// `wasi-messaging` trigger type
+    WasiMessaging(WasiMessagingTriggerConfiguration),
 }
 
 impl TryFrom<ApplicationTriggerDeserialised> for ApplicationTrigger {
@@ -172,6 +176,10 @@ impl TryFrom<ApplicationTriggerDeserialised> for ApplicationTrigger {
             ),
             "redis" => ApplicationTrigger::Redis(
                 RedisTriggerConfiguration::deserialize(value.parameters)
+                    .map_err(|e| Error::InvalidTriggerTypeParameters(e.to_string()))?,
+            ),
+            "wasi-messaging" => ApplicationTrigger::WasiMessaging(
+                WasiMessagingTriggerConfiguration::deserialize(value.parameters)
                     .map_err(|e| Error::InvalidTriggerTypeParameters(e.to_string()))?,
             ),
             _ => ApplicationTrigger::External(ExternalTriggerConfiguration {
@@ -192,6 +200,9 @@ impl From<ApplicationTrigger> for ApplicationTriggerSerialised {
             }
             ApplicationTrigger::Redis(r) => {
                 Self::Internal(InternalApplicationTriggerSerialised::Redis(r))
+            }
+            ApplicationTrigger::WasiMessaging(r) => {
+                Self::Internal(InternalApplicationTriggerSerialised::WasiMessaging(r))
             }
             ApplicationTrigger::External(e) => {
                 let ty = e.trigger_type;
@@ -240,6 +251,24 @@ impl TryFrom<ApplicationTrigger> for RedisTriggerConfiguration {
     fn try_from(trigger: ApplicationTrigger) -> Result<Self, Self::Error> {
         match trigger {
             ApplicationTrigger::Redis(redis) => Ok(redis),
+            _ => Err(Error::InvalidTriggerType),
+        }
+    }
+}
+
+/// `wasi-messaging` trigger configuration.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct WasiMessagingTriggerConfiguration {
+    /// Address of Redis server.
+    pub address: String,
+}
+
+impl TryFrom<ApplicationTrigger> for WasiMessagingTriggerConfiguration {
+    type Error = Error;
+
+    fn try_from(trigger: ApplicationTrigger) -> Result<Self, Self::Error> {
+        match trigger {
+            ApplicationTrigger::WasiMessaging(config) => Ok(config),
             _ => Err(Error::InvalidTriggerType),
         }
     }
@@ -405,6 +434,10 @@ impl Default for RedisExecutor {
     }
 }
 
+/// Configuration for the `wasi-messaging` trigger.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WasiMessagingConfig {}
+
 /// Trigger configuration.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase", untagged)]
@@ -413,6 +446,8 @@ pub enum TriggerConfig {
     Http(HttpConfig),
     /// Redis trigger configuration
     Redis(RedisConfig),
+    /// `wasi-messaging` trigger configuration
+    WasiMessaging(WasiMessagingConfig),
     /// External trigger configuration
     External(HashMap<String, toml::Value>),
 }
@@ -440,6 +475,17 @@ impl TryFrom<TriggerConfig> for RedisConfig {
     fn try_from(trigger: TriggerConfig) -> Result<Self, Self::Error> {
         match trigger {
             TriggerConfig::Redis(redis) => Ok(redis),
+            _ => Err(Error::InvalidTriggerType),
+        }
+    }
+}
+
+impl TryFrom<TriggerConfig> for WasiMessagingConfig {
+    type Error = Error;
+
+    fn try_from(trigger: TriggerConfig) -> Result<Self, Self::Error> {
+        match trigger {
+            TriggerConfig::WasiMessaging(config) => Ok(config),
             _ => Err(Error::InvalidTriggerType),
         }
     }

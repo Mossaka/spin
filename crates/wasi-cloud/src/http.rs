@@ -1,7 +1,7 @@
 use crate::{
     poll::{PollWaker, Pollable},
     streams::{InputStream, OutputStream, Sender},
-    wit::wasi::http::{
+    wasi_http::wasi::http::{
         outgoing_handler,
         types2::{self as types, Method, Scheme},
     },

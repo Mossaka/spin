@@ -12,7 +12,7 @@ use std::{
 use tokio::task;
 use wasi_cloud::{
     http::{Fields, IncomingRequest, ResponseOutparam},
-    wit::{
+    wasi_http::{
         wasi::http::types2::{Method, Scheme},
         Proxy,
     },

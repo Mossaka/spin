@@ -1,4 +1,4 @@
-use crate::{wit::wasi::poll::poll2 as poll, WasiCloud};
+use crate::{wasi_http::wasi::poll::poll2 as poll, WasiCloud};
 use anyhow::{anyhow, Result};
 use spin_core::async_trait;
 use std::{
