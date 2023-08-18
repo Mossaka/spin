@@ -1,26 +1,37 @@
 #[cfg(test)]
 mod integration_tests {
     use anyhow::{anyhow, Context, Result};
-    use futures::{channel::oneshot, future, stream};
+    use futures::{
+        channel::{mpsc, oneshot},
+        future,
+        stream::{self, FuturesUnordered, SplitSink},
+        task::Poll,
+        FutureExt, SinkExt, Stream, StreamExt, TryFutureExt, TryStreamExt,
+    };
     use hyper::{
         body::Bytes, http::Error, service, Body, Client, Method, Request, Response, Server,
         StatusCode,
     };
+    use redis_protocol::resp3::types::Frame;
     use sha2::{Digest, Sha256};
     use spin_loader::local::{config::RawModuleSource, raw_manifest_from_file};
+    use spin_trigger_wasi_messaging::RedisCodec;
     use std::{
         collections::HashMap,
         ffi::OsStr,
         iter,
         net::{Ipv4Addr, SocketAddrV4, TcpListener},
+        ops::Deref,
         path::Path,
+        pin::Pin,
         process::{self, Child, Command, Output},
         str,
         sync::Arc,
         time::Duration,
     };
     use tempfile::tempdir;
-    use tokio::{net::TcpStream, task, time::sleep};
+    use tokio::{net::TcpStream, sync::Mutex as AsyncMutex, task, time::sleep};
+    use tokio_util::codec::Framed;
 
     const TIMER_TRIGGER_INTEGRATION_TEST: &str = "examples/spin-timer/app-example";
     const TIMER_TRIGGER_DIRECTORY: &str = "examples/spin-timer";
@@ -798,5 +809,217 @@ route = "/..."
         assert_eq!(body, hyper::body::to_bytes(response.into_body()).await?);
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_wasi_messaging() -> Result<()> {
+        // In this test, we create a mock Redis server for Spin to talk to.  The mock server only accepts the
+        // incoming frames the guest is expected to send, and only sends frames the guest is expected to handle.
+
+        enum Control {
+            Continue,
+            Stop,
+        }
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0)).await?;
+        let address = listener.local_addr()?;
+        let mut futures = FuturesUnordered::new();
+        let (mut future_tx, mut future_rx) = mpsc::channel(2);
+        let subscribers = Arc::new(AsyncMutex::new(Vec::new()));
+
+        let handle = {
+            let subscribers = subscribers.clone();
+            move |tx: Arc<AsyncMutex<SplitSink<_, _>>>, frame, address| {
+                let subscribers = subscribers.clone();
+                async move {
+                    let unexpected = || Err(anyhow!("don't know how to handle frame: {frame:?}"));
+
+                    match &frame {
+                        Frame::Array { data, .. } => match data.as_slice() {
+                            [Frame::BlobString { data, .. }] => match data.deref() {
+                                b"PING" => {
+                                    tx.lock()
+                                        .await
+                                        .send(Frame::SimpleString {
+                                            data: Bytes::copy_from_slice(b"PONG"),
+                                            attributes: None,
+                                        })
+                                        .await?
+                                }
+                                _ => return unexpected(),
+                            },
+                            [Frame::BlobString { data: data1, .. }, Frame::BlobString { data: data2, .. }] => {
+                                match (data1.deref(), data2.deref()) {
+                                    (b"SUBSCRIBE", b"foo") => {
+                                        subscribers.lock().await.push((tx.clone(), address));
+
+                                        let mut tx = tx.lock().await;
+
+                                        tx.send(Frame::Array {
+                                            data: vec![
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"subscribe"),
+                                                    attributes: None,
+                                                },
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"foo"),
+                                                    attributes: None,
+                                                },
+                                                Frame::Number {
+                                                    data: 1,
+                                                    attributes: None,
+                                                },
+                                            ],
+                                            attributes: None,
+                                        })
+                                        .await?;
+
+                                        tx.send(Frame::Array {
+                                            data: vec![
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"message"),
+                                                    attributes: None,
+                                                },
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"foo"),
+                                                    attributes: None,
+                                                },
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"first"),
+                                                    attributes: None,
+                                                },
+                                            ],
+                                            attributes: None,
+                                        })
+                                        .await?;
+                                    }
+                                    _ => return unexpected(),
+                                }
+                            }
+                            [Frame::BlobString { data: data1, .. }, Frame::BlobString { data: data2, .. }, Frame::BlobString { data: data3, .. }] => {
+                                match (data1.deref(), data2.deref(), data3.deref()) {
+                                    (b"PUBLISH", b"foo", message) => {
+                                        let frame = Frame::Array {
+                                            data: vec![
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"message"),
+                                                    attributes: None,
+                                                },
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(b"foo"),
+                                                    attributes: None,
+                                                },
+                                                Frame::BlobString {
+                                                    data: Bytes::copy_from_slice(message),
+                                                    attributes: None,
+                                                },
+                                            ],
+                                            attributes: None,
+                                        };
+
+                                        let mut count = 0;
+                                        for (subscriber, _) in subscribers.lock().await.iter_mut() {
+                                            subscriber.lock().await.send(frame.clone()).await?;
+                                            count += 1;
+                                        }
+
+                                        tx.lock()
+                                            .await
+                                            .send(Frame::Number {
+                                                data: count,
+                                                attributes: None,
+                                            })
+                                            .await?;
+
+                                        if message == b"third" {
+                                            return Ok(Control::Stop);
+                                        }
+                                    }
+                                    _ => return unexpected(),
+                                }
+                            }
+                            _ => return unexpected(),
+                        },
+                        _ => return unexpected(),
+                    }
+
+                    Ok(Control::Continue)
+                }
+            }
+        };
+
+        let serve = move |socket, address| {
+            let handle = handle.clone();
+            async move {
+                let (tx, mut rx) = Framed::new(socket, RedisCodec).split();
+                let tx = Arc::new(AsyncMutex::new(tx));
+
+                while let Some(frame) = rx.try_next().await? {
+                    match handle(tx.clone(), frame, address).await? {
+                        Control::Continue => (),
+                        Control::Stop => return Ok(Control::Stop),
+                    }
+                }
+
+                Ok(Control::Continue)
+            }
+            .boxed()
+        };
+
+        futures.push(
+            async move {
+                loop {
+                    let (socket, address) = listener.accept().await?;
+                    future_tx.send(serve(socket, address)).await?;
+                }
+            }
+            .boxed(),
+        );
+
+        futures.push(
+            tokio::process::Command::new(get_process(SPIN_BINARY))
+                .arg("up")
+                .arg("--follow")
+                .arg("wasi-messaging")
+                .arg("--file")
+                .arg("examples/wasi-messaging-rust/spin.toml")
+                .arg("--env")
+                .arg(format!("REDIS_ADDRESS=redis://{address}"))
+                .env(
+                    "RUST_LOG",
+                    "spin=trace,spin_loader=trace,spin_core=trace,spin_http=trace",
+                )
+                .status()
+                .map_err(anyhow::Error::from)
+                .and_then(|status| {
+                    if status.success() {
+                        future::ok(Control::Stop)
+                    } else {
+                        future::err(anyhow!("spin exited with status {status:?}"))
+                    }
+                })
+                .boxed(),
+        );
+
+        future::poll_fn(move |cx| loop {
+            match Pin::new(&mut futures).poll_next(cx) {
+                Poll::Ready(Some(Err(e))) => return Poll::Ready(Err(e)),
+                Poll::Ready(None) | Poll::Ready(Some(Ok(Control::Stop))) => {
+                    return Poll::Ready(Ok(()))
+                }
+                _ => (),
+            };
+
+            let mut pushed = false;
+            while let Ok(Some(future)) = future_rx.try_next() {
+                futures.push(future);
+                pushed = true;
+            }
+
+            if !pushed {
+                break Poll::Pending;
+            }
+        })
+        .await
     }
 }

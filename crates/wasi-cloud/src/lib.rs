@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use redis::aio::Connection;
 use reqwest::Client;
 use spin_common::table::Table;
 use spin_core::HostComponent;
@@ -38,7 +37,8 @@ impl HostComponent for WasiCloudComponent {
         linker: &mut spin_core::Linker<T>,
         get: impl Fn(&mut spin_core::Data<T>) -> &mut Self::Data + Send + Sync + Copy + 'static,
     ) -> anyhow::Result<()> {
-        wasi_http::Proxy::add_to_linker(linker, get)
+        wasi_http::Proxy::add_to_linker(linker, get)?;
+        wasi_messaging::Messaging::add_to_linker(linker, get)
     }
 
     fn build_data(&self) -> Self::Data {
@@ -48,7 +48,7 @@ impl HostComponent for WasiCloudComponent {
 
 #[derive(Default)]
 struct WasiMessaging {
-    connections: HashMap<String, Connection>,
+    client_cache: HashMap<String, messaging::Client>,
     clients: Table<messaging::Client>,
     errors: Table<messaging::Error>,
 }

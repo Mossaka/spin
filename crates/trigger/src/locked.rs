@@ -112,6 +112,9 @@ impl LockedAppBuilder {
                         trigger_type = "redis";
                         builder.string("channel", channel);
                     },
+                    (ApplicationTrigger::WasiMessaging(_), TriggerConfig::WasiMessaging(_)) => {
+                        trigger_type = "wasi-messaging";
+                    },
                     (ApplicationTrigger::External(c), TriggerConfig::External(t)) => {
                         trigger_type = c.trigger_type();
                         for (key, value) in &t {

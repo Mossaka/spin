@@ -178,7 +178,7 @@ impl TryFrom<ApplicationTriggerDeserialised> for ApplicationTrigger {
                 RedisTriggerConfiguration::deserialize(value.parameters)
                     .map_err(|e| Error::InvalidTriggerTypeParameters(e.to_string()))?,
             ),
-            "wasi-messaging" => ApplicationTrigger::WasiMessaging(
+            "wasi-messaging" | "wasiMessaging" => ApplicationTrigger::WasiMessaging(
                 WasiMessagingTriggerConfiguration::deserialize(value.parameters)
                     .map_err(|e| Error::InvalidTriggerTypeParameters(e.to_string()))?,
             ),
@@ -258,10 +258,7 @@ impl TryFrom<ApplicationTrigger> for RedisTriggerConfiguration {
 
 /// `wasi-messaging` trigger configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct WasiMessagingTriggerConfiguration {
-    /// Address of Redis server.
-    pub address: String,
-}
+pub struct WasiMessagingTriggerConfiguration {}
 
 impl TryFrom<ApplicationTrigger> for WasiMessagingTriggerConfiguration {
     type Error = Error;

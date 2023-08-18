@@ -13,6 +13,7 @@ const RUST_HTTP_VAULT_CONFIG_TEST: &str = "tests/http/vault-config-test";
 const RUST_OUTBOUND_REDIS_INTEGRATION_TEST: &str = "tests/outbound-redis/http-rust-outbound-redis";
 const TIMER_TRIGGER_INTEGRATION_TEST: &str = "examples/spin-timer/app-example";
 const WASI_HTTP_INTEGRATION_TEST: &str = "examples/wasi-http-rust-async";
+const WASI_MESSAGING_INTEGRATION_TEST: &str = "examples/wasi-messaging-rust";
 
 fn main() {
     // Extract environment information to be passed to plugins.
@@ -92,6 +93,7 @@ error: the `wasm32-wasi` target is not installed
     cargo_build(RUST_OUTBOUND_REDIS_INTEGRATION_TEST);
     cargo_build(TIMER_TRIGGER_INTEGRATION_TEST);
     cargo_build(WASI_HTTP_INTEGRATION_TEST);
+    cargo_build(WASI_MESSAGING_INTEGRATION_TEST);
 }
 
 fn build_wasm_test_program(name: &'static str, root: &'static str) {

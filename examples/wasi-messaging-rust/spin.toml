@@ -1,0 +1,14 @@
+spin_manifest_version = "1"
+authors = ["Fermyon Engineering <engineering@fermyon.com>"]
+description = "A wasi-messaging example"
+name = "spin-wasi-messaging"
+trigger = { type = "wasi-messaging" }
+version = "1.0.0"
+
+[[component]]
+id = "wasi-messaging"
+source = "target/wasm32-wasi/release/wasi_messaging_rust.wasm"
+[component.trigger]
+[component.build]
+command = "cargo build --target wasm32-wasi --release"
+watch = ["src/**/*.rs", "Cargo.toml"]

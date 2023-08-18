@@ -4323,6 +4323,7 @@ dependencies = [
  "futures",
  "http",
  "hyper",
+ "redis",
  "reqwest",
  "spin-common",
  "spin-core",
